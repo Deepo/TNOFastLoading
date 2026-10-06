@@ -12,4 +12,6 @@ Building needs Visual Studio 2026 (MSVC) and xmake:
 
 The plugin: build\windows\x64\release\TNOFastLoading.asi
 
-MIT License. The libraries in external/ have their own licences.
+MIT License. Uses SafetyHook (BSL-1.0), Zydis and Zycore (MIT) and mINI (MIT), as git
+submodules in external/. The version information and log layout follow Lyall's game fixes
+(MIT): see THIRD-PARTY-NOTICES.txt.
