@@ -22,7 +22,7 @@
 // 4. SkipIntroVideo (intro_skip.cpp): com_skipIntroVideo starts as 1, so the start-up logo video
 //    doesn't hold the game ~30 s.
 //
-// Loaded by Ultimate ASI Loader as dinput8.dll (the exe imports DINPUT8), which loads *.asi from
+// Loaded by Ultimate ASI Loader as winmm.dll (the exe imports WINMM), which loads *.asi from
 // the game folder at start-up, before the game's own start-up code. Each part is switchable in
 // TNOFastLoading.ini next to the plugin; all of them are set up once, here in DllMain. Afterwards
 // only SmartWait (on the reading threads) and the hook (on the main thread while a load screen
