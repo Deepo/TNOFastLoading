@@ -1,6 +1,6 @@
 # TNOFastLoading
 
-Source code of Wolfenstein The New Order - Fast Loading:
+Source code of Wolfenstein The New Order - Fast Loading. Download, installation and support:
 https://www.nexusmods.com/wolfensteintheneworder/mods/22
 
 Building needs Visual Studio 2026 (MSVC) and xmake:
