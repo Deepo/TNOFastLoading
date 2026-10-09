@@ -40,6 +40,40 @@
 // a different order; the default's lea is at 0x21caf. Its linker merges identical strings, so the
 // "0" (0xbfc968) and the "1" (0xbfd0a0) are shared by many cvars and not next to the name. The
 // Game Pass build has the same initialiser at 0x21d50.
+//
+// The Old Blood: the initialiser at 0xb5c990 has the 2014 shape (the lea at 0xb5c99b), but no "1"
+// follows its "0" (0xe44944), so the default points at the "1" just before "skips the intro
+// video", com_waitForSavegames' default (0xe44a1c). idCommonLocal::Init reads the cvar the same
+// way (0x12e5da). Its Init2 (0x1650b0) differs: with the cvar set it still plays the video during
+// "common" while the cvar bink_dontfree is set (its default), but marks it to end with the load
+// and doesn't wait for it, so the logo would show while "common" loads and stop when it's done:
+//
+//   0x16512a  lea   rbx, [rip+...]          ; "bink/loadvideo_pc_xboxone.bik"
+//   0x165131  xor   r14d, r14d
+//   0x165134  test  sil, sil                ; skip?
+//   0x165137  je    0x165144
+//   0x165139  cmp   [bink_dontfree], r14d
+//   0x165140  cmove rbx, r14                ; no video only if bink_dontfree is 0
+//
+// With bink_dontfree the render system keeps the Bink textures of the first video it plays, and
+// refuses any later video of other dimensions ("does not match dimensions of previously played
+// video"); the logo makes that first video a 1920x1080 one. Every video The Old Blood ships is
+// 1920x1080, so here SkipIntroVideo also makes the cmove a plain `mov rbx, r14` (and a nop): with
+// the cvar set there is no video at all, as in The New Order, and the first loading video creates
+// the textures instead.
+//
+// The Old Blood also has warning screens before its main menu (a photosensitivity warning and an
+// auto-save notice; TNO has none). Its own switch is the cvar skipInitialWarningScreens ("Skip
+// initial warning screens such as photo sensitivity warning and auto-save notice", default "0"),
+// read only by the session's state machine (0x4f9b13): while no player has signed in, it moves the
+// session from its first state (0, "press start") to the next at once. ApplyWarningScreens makes
+// it start as 1 the same way: its initialiser at 0xb854a0 has the 2014 shape, and the default
+// points at net_forceMatchBrowser's "1" (0xef9444).
+//
+// The Old Blood's Game Pass build is a 2021 rebuild like The New Order's: both initialisers have
+// Epic's shape (com_skipIntroVideo at 0x27370, skipInitialWarningScreens at 0x351f0), with the
+// merged "0" (0xc87a28) and "1" (0xc88198); Init2's choice of the video is the same code at
+// 0x174689.
 // ---------------------------------------------------------------------------
 
 #include <array>
@@ -123,6 +157,74 @@ namespace IntroSkip
     constexpr std::uintptr_t kCVar2021GP = 0x1565C70;
     static_assert(kZero2021GP - (kInit2021GP + kDispOffset2021 + 4) == 0xC49372);
 
+    // The Old Blood (GOG): the 2014 shape.
+    constexpr std::uint32_t kTimeDateStampTOB = 0x554C7C23;
+    constexpr std::uintptr_t kInitTOB = 0xB5C990;
+    constexpr std::uint8_t kInitTOBBytes[] = {
+        0x48, 0x83, 0xEC, 0x38,                                // sub  rsp, 0x38
+        0x48, 0x8D, 0x05, 0x85, 0x80, 0x2E, 0x00,              // lea  rax, [rip+0x2e8085]  ("skips the intro video")
+        0x4C, 0x8D, 0x05, 0xA2, 0x7F, 0x2E, 0x00,              // lea  r8,  [rip+0x2e7fa2]  ("0")
+        0x48, 0x8D, 0x15, 0x8F, 0x80, 0x2E, 0x00,              // lea  rdx, [rip+0x2e808f]  ("com_skipIntroVideo")
+        0x48, 0x8D, 0x0D, 0xE0, 0x68, 0xCC, 0x00,              // lea  rcx, [rip+0xcc68e0]  (the cvar)
+        0x41, 0xB9, 0x01, 0x00, 0x00, 0x00,                    // mov  r9d, 1
+        0x48, 0xC7, 0x44, 0x24, 0x28, 0x00, 0x00, 0x00, 0x00,  // mov  qword ptr [rsp+0x28], 0
+        0x48, 0x89, 0x44, 0x24, 0x20,                          // mov  qword ptr [rsp+0x20], rax
+        0xE8, 0x07, 0x88, 0xE5, 0xFF,                          // call 0x9b51d0
+        0x48, 0x8D, 0x0D, 0x30, 0x30, 0x05, 0x00,              // lea  rcx, [rip+0x53030]
+        0x48, 0x83, 0xC4, 0x38,                                // add  rsp, 0x38
+        0xE9, 0xCF, 0x8F, 0xF5, 0xFF,                          // jmp  0xab59a8
+    };
+    constexpr std::uintptr_t kZeroTOB = 0xE44944;  // "0"
+    constexpr std::uintptr_t kOneTOB = 0xE44A1C;   // "1" (com_waitForSavegames' default)
+    constexpr std::uintptr_t kNameTOB = 0xE44A38;  // "com_skipIntroVideo"
+    constexpr std::uintptr_t kCVarTOB = 0x1823290;
+    static_assert(kZeroTOB - (kInitTOB + kDispOffset + 4) == 0x2E7FA2);  // the lea's disp above
+    constexpr std::uintptr_t kLogoTOB = 0x16512A;  // Init2's choice of the video, above
+    constexpr std::uint8_t kLogoTOBBytes[] = {
+        0x48, 0x8D, 0x1D, 0xDF, 0x03, 0xCF, 0x00,  // lea   rbx, [rip+0xcf03df]  ("bink/loadvideo_pc_xboxone.bik")
+        0x45, 0x33, 0xF6,                          // xor   r14d, r14d
+        0x40, 0x84, 0xF6,                          // test  sil, sil
+        0x74, 0x0B,                                // je    0x165144
+        0x44, 0x39, 0x35, 0x18, 0xFD, 0xDB, 0x01,  // cmp   [bink_dontfree], r14d
+        0x49, 0x0F, 0x44, 0xDE,                    // cmove rbx, r14
+    };
+    constexpr std::size_t kLogoOffsetTOB = 0x16;                         // the cmove, at 0x165140
+    constexpr std::uint8_t kNoLogo[] = {0x49, 0x8B, 0xDE, 0x90};       // mov rbx, r14; nop
+    static_assert(sizeof(kLogoTOBBytes) == kLogoOffsetTOB + sizeof(kNoLogo));
+
+    // The Old Blood, Game Pass (2021-04-14): Epic's shape.
+    constexpr std::uint32_t kTimeDateStampTOBGP = 0x60770B00;
+    constexpr std::uintptr_t kInitTOBGP = 0x27370;
+    constexpr std::uint8_t kInitTOBGPBytes[] = {
+        0x48, 0x83, 0xEC, 0x38,                                // sub  rsp, 0x38
+        0x48, 0x8D, 0x05, 0xDD, 0x3C, 0xC7, 0x00,              // lea  rax, [rip+0xc73cdd]  ("skips the intro video")
+        0x48, 0xC7, 0x44, 0x24, 0x28, 0x00, 0x00, 0x00, 0x00,  // mov  qword ptr [rsp+0x28], 0
+        0x41, 0xB9, 0x01, 0x00, 0x00, 0x00,                    // mov  r9d, 1
+        0x48, 0x89, 0x44, 0x24, 0x20,                          // mov  qword ptr [rsp+0x20], rax
+        0x4C, 0x8D, 0x05, 0x92, 0x06, 0xC6, 0x00,              // lea  r8,  [rip+0xc60692]  ("0")
+        0x48, 0x8D, 0x15, 0xD3, 0x3C, 0xC7, 0x00,              // lea  rdx, [rip+0xc73cd3]  ("com_skipIntroVideo")
+        0x48, 0x8D, 0x0D, 0xDC, 0x81, 0x55, 0x01,              // lea  rcx, [rip+0x15581dc] (the cvar)
+        0xE8, 0x27, 0x12, 0xA4, 0x00,                          // call 0xa685d0
+        0x48, 0x8D, 0x0D, 0xA0, 0xB7, 0xC3, 0x00,              // lea  rcx, [rip+0xc3b7a0]
+        0x48, 0x83, 0xC4, 0x38,                                // add  rsp, 0x38
+        0xE9, 0x97, 0xC5, 0xBE, 0x00,                          // jmp  0xc13950
+    };
+    constexpr std::uintptr_t kZeroTOBGP = 0xC87A28;  // "0"
+    constexpr std::uintptr_t kOneTOBGP = 0xC88198;   // "1"
+    constexpr std::uintptr_t kNameTOBGP = 0xC9B070;  // "com_skipIntroVideo"
+    constexpr std::uintptr_t kCVarTOBGP = 0x157F580;
+    static_assert(kZeroTOBGP - (kInitTOBGP + kDispOffset2021 + 4) == 0xC60692);
+    constexpr std::uintptr_t kLogoTOBGP = 0x174689;
+    constexpr std::uint8_t kLogoTOBGPBytes[] = {
+        0x48, 0x8D, 0x1D, 0xF8, 0x69, 0xB3, 0x00,  // lea   rbx, [rip+0xb369f8]  ("bink/loadvideo_pc_xboxone.bik")
+        0x45, 0x33, 0xF6,                          // xor   r14d, r14d
+        0x40, 0x84, 0xF6,                          // test  sil, sil
+        0x74, 0x0B,                                // je    0x1746a3
+        0x44, 0x39, 0x35, 0xE9, 0x7A, 0xB2, 0x01,  // cmp   [bink_dontfree], r14d
+        0x49, 0x0F, 0x44, 0xDE,                    // cmove rbx, r14
+    };
+    static_assert(sizeof(kLogoTOBGPBytes) == kLogoOffsetTOB + sizeof(kNoLogo));
+
     struct Build
     {
         std::uint32_t stamp;
@@ -131,16 +233,73 @@ namespace IntroSkip
         std::size_t dispOffset;
         std::uintptr_t zero, one, name;  // the strings "0", "1", "com_skipIntroVideo"
         std::uintptr_t cvar;
+        // The Old Blood's Init2: the code that chooses the logo video, and where kNoLogo goes.
+        std::uintptr_t logo = 0;
+        std::span<const std::uint8_t> logoBytes = {};
+        std::size_t logoOffset = 0;
     };
     constexpr Build kBuilds[] = {
         {kTimeDateStamp, kInit, kInitBytes, kDispOffset, kZero, kOne, kName, kCVar},
         {kTimeDateStamp2021, kInit2021, kInit2021Bytes, kDispOffset2021, kZero2021, kOne2021, kName2021, kCVar2021},
         {kTimeDateStamp2021GP, kInit2021GP, kInit2021GPBytes, kDispOffset2021, kZero2021GP, kOne2021GP, kName2021GP,
          kCVar2021GP},
+        {kTimeDateStampTOB, kInitTOB, kInitTOBBytes, kDispOffset, kZeroTOB, kOneTOB, kNameTOB, kCVarTOB, kLogoTOB,
+         kLogoTOBBytes, kLogoOffsetTOB},
+        {kTimeDateStampTOBGP, kInitTOBGP, kInitTOBGPBytes, kDispOffset2021, kZeroTOBGP, kOneTOBGP, kNameTOBGP, kCVarTOBGP,
+         kLogoTOBGP, kLogoTOBGPBytes, kLogoOffsetTOB},
     };
     constexpr std::size_t kMaxInit = 96;
     static_assert(sizeof(kInitBytes) <= kMaxInit && sizeof(kInit2021Bytes) <= kMaxInit &&
-                  sizeof(kInit2021GPBytes) <= kMaxInit);
+                  sizeof(kInit2021GPBytes) <= kMaxInit && sizeof(kInitTOBBytes) <= kMaxInit &&
+                  sizeof(kInitTOBGPBytes) <= kMaxInit);
+
+    // The Old Blood's skipInitialWarningScreens (ApplyWarningScreens): the 2014 shape.
+    constexpr std::uintptr_t kWarnInitTOB = 0xB854A0;
+    constexpr std::uint8_t kWarnInitTOBBytes[] = {
+        0x48, 0x83, 0xEC, 0x38,                                // sub  rsp, 0x38
+        0x48, 0x8D, 0x05, 0xA5, 0x53, 0x37, 0x00,              // lea  rax, [rip+0x3753a5]  ("Skip initial warning screens ...")
+        0x4C, 0x8D, 0x05, 0x12, 0x40, 0x37, 0x00,              // lea  r8,  [rip+0x374012]  ("0")
+        0x48, 0x8D, 0x15, 0xEF, 0x53, 0x37, 0x00,              // lea  rdx, [rip+0x3753ef]  ("skipInitialWarningScreens")
+        0x48, 0x8D, 0x0D, 0x70, 0x3F, 0x3E, 0x01,              // lea  rcx, [rip+0x13e3f70] (the cvar)
+        0x41, 0xB9, 0x01, 0x00, 0x00, 0x00,                    // mov  r9d, 1
+        0x48, 0xC7, 0x44, 0x24, 0x28, 0x00, 0x00, 0x00, 0x00,  // mov  qword ptr [rsp+0x28], 0
+        0x48, 0x89, 0x44, 0x24, 0x20,                          // mov  qword ptr [rsp+0x20], rax
+        0xE8, 0xF7, 0xFC, 0xE2, 0xFF,                          // call 0x9b51d0
+        0x48, 0x8D, 0x0D, 0x50, 0x12, 0x03, 0x00,              // lea  rcx, [rip+0x31250]
+        0x48, 0x83, 0xC4, 0x38,                                // add  rsp, 0x38
+        0xE9, 0xBF, 0x04, 0xF3, 0xFF,                          // jmp  0xab59a8
+    };
+    constexpr std::uintptr_t kWarnZeroTOB = 0xEF94C4;  // "0"
+    constexpr std::uintptr_t kWarnOneTOB = 0xEF9444;   // "1" (net_forceMatchBrowser's default)
+    constexpr std::uintptr_t kWarnNameTOB = 0xEFA8A8;  // "skipInitialWarningScreens"
+    constexpr std::uintptr_t kWarnCVarTOB = 0x1F69430;
+    static_assert(kWarnZeroTOB - (kWarnInitTOB + kDispOffset + 4) == 0x374012);  // the lea's disp above
+    // The Old Blood, Game Pass: Epic's shape, the merged "0" and "1".
+    constexpr std::uintptr_t kWarnInitTOBGP = 0x351F0;
+    constexpr std::uint8_t kWarnInitTOBGPBytes[] = {
+        0x48, 0x83, 0xEC, 0x38,                                // sub  rsp, 0x38
+        0x48, 0x8D, 0x05, 0x65, 0x6B, 0xCB, 0x00,              // lea  rax, [rip+0xcb6b65]  ("Skip initial warning screens ...")
+        0x48, 0xC7, 0x44, 0x24, 0x28, 0x00, 0x00, 0x00, 0x00,  // mov  qword ptr [rsp+0x28], 0
+        0x41, 0xB9, 0x01, 0x00, 0x00, 0x00,                    // mov  r9d, 1
+        0x48, 0x89, 0x44, 0x24, 0x20,                          // mov  qword ptr [rsp+0x20], rax
+        0x4C, 0x8D, 0x05, 0x12, 0x28, 0xC5, 0x00,              // lea  r8,  [rip+0xc52812]  ("0")
+        0x48, 0x8D, 0x15, 0x9B, 0x6B, 0xCB, 0x00,              // lea  rdx, [rip+0xcb6b9b]  ("skipInitialWarningScreens")
+        0x48, 0x8D, 0x0D, 0xDC, 0x80, 0xC3, 0x01,              // lea  rcx, [rip+0x1c380dc] (the cvar)
+        0xE8, 0xA7, 0x33, 0xA3, 0x00,                          // call 0xa685d0
+        0x48, 0x8D, 0x0D, 0x90, 0x13, 0xC3, 0x00,              // lea  rcx, [rip+0xc31390]
+        0x48, 0x83, 0xC4, 0x38,                                // add  rsp, 0x38
+        0xE9, 0x17, 0xE7, 0xBD, 0x00,                          // jmp  0xc13950
+    };
+    constexpr std::uintptr_t kWarnNameTOBGP = 0xCEBDB8;  // "skipInitialWarningScreens"
+    constexpr std::uintptr_t kWarnCVarTOBGP = 0x1C6D300;
+    static_assert(kZeroTOBGP - (kWarnInitTOBGP + kDispOffset2021 + 4) == 0xC52812);
+    constexpr Build kWarningBuilds[] = {
+        {kTimeDateStampTOB, kWarnInitTOB, kWarnInitTOBBytes, kDispOffset, kWarnZeroTOB, kWarnOneTOB, kWarnNameTOB,
+         kWarnCVarTOB},
+        {kTimeDateStampTOBGP, kWarnInitTOBGP, kWarnInitTOBGPBytes, kDispOffset2021, kZeroTOBGP, kOneTOBGP, kWarnNameTOBGP,
+         kWarnCVarTOBGP},
+    };
+    static_assert(sizeof(kWarnInitTOBBytes) <= kMaxInit && sizeof(kWarnInitTOBGPBytes) <= kMaxInit);
 
     static std::string Hex(const std::uint8_t* p, std::size_t n)
     {
@@ -149,16 +308,46 @@ namespace IntroSkip
         return s;
     }
 
-    Result Apply(HMODULE exe)
+    // Writes n bytes of code; false (and the log says why) if it didn't stick.
+    static bool WriteCode(const char* what, std::uint8_t* at, const void* bytes, std::size_t n)
+    {
+        DWORD oldProtect = 0;
+        if (!VirtualProtect(at, n, PAGE_EXECUTE_READWRITE, &oldProtect)) {
+            LOG_ERROR("{}: VirtualProtect failed (error {}): changing nothing.", what, GetLastError());
+            return false;
+        }
+        std::memcpy(at, bytes, n);
+        DWORD unused = 0;
+        if (!VirtualProtect(at, n, oldProtect, &unused))
+            LOG_WARN("{}: could not restore the protection at {} (error {}); the change itself is made.", what,
+                     static_cast<void*>(at), GetLastError());
+        FlushInstructionCache(GetCurrentProcess(), at, n);
+        if (std::memcmp(at, bytes, n) != 0) {
+            LOG_ERROR("{}: write did not stick at {}.", what, static_cast<void*>(at));
+            return false;
+        }
+        return true;
+    }
+
+    // One cvar whose default this module changes from "0" to "1".
+    struct Target
+    {
+        std::span<const Build> builds;
+        const char* cvar;    // its name, as the exe stores it
+        const char* what;    // the log lines' prefix
+        const char* effect;  // what it does, for the log
+    };
+
+    static Result ApplyTo(HMODULE exe, const Target& t)
     {
         auto* base = reinterpret_cast<std::uint8_t*>(exe);
         const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
         const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
         const Build* b = nullptr;
-        for (const Build& candidate : kBuilds)
+        for (const Build& candidate : t.builds)
             if (candidate.stamp == nt->FileHeader.TimeDateStamp) b = &candidate;
         if (!b) {
-            LOG_WARN("Intro video: not the analysed build (PE timestamp 0x{:08x}): changing nothing.",
+            LOG_WARN("{}: not the analysed build (PE timestamp 0x{:08x}): changing nothing.", t.what,
                      nt->FileHeader.TimeDateStamp);
             return Result::UnknownBuild;
         }
@@ -175,49 +364,59 @@ namespace IntroSkip
         std::memcpy(&disp, init.data() + b->dispOffset, sizeof(disp));
         std::memcpy(init.data() + b->dispOffset, b->initBytes.data() + b->dispOffset, sizeof(disp));
         if (std::memcmp(init.data(), b->initBytes.data(), n) != 0 || std::memcmp(base + b->zero, "0", 2) != 0 ||
-            std::memcmp(base + b->one, "1", 2) != 0 || std::memcmp(base + b->name, "com_skipIntroVideo", 19) != 0) {
-            LOG_WARN("Intro video: the initialiser of com_skipIntroVideo at 0x{:x} differs from the analysed build ({}): "
-                     "changing nothing.", b->init, Hex(base + b->init, n));
+            std::memcmp(base + b->one, "1", 2) != 0 || std::memcmp(base + b->name, t.cvar, std::strlen(t.cvar) + 1) != 0) {
+            LOG_WARN("{}: the initialiser of {} at 0x{:x} differs from the analysed build ({}): changing nothing.", t.what,
+                     t.cvar, b->init, Hex(base + b->init, n));
             return Result::UnknownBuild;
         }
         if (disp == patchedDisp) {
-            LOG_INFO("Intro video: com_skipIntroVideo already defaults to 1: nothing to do.");
+            LOG_INFO("{}: {} already defaults to 1: nothing to do.", t.what, t.cvar);
             return Result::AlreadyPatched;
         }
         if (disp != originalDisp) {
-            LOG_WARN("Intro video: the default of com_skipIntroVideo points at 0x{:x}, not 0x{:x}: changing nothing.",
+            LOG_WARN("{}: the default of {} points at 0x{:x}, not 0x{:x}: changing nothing.", t.what, t.cvar,
                      dispEnd + disp, b->zero);
+            return Result::UnknownBuild;
+        }
+        // The Old Blood: Init2's choice of the logo video must be the analysed code.
+        if (b->logo && std::memcmp(base + b->logo, b->logoBytes.data(), b->logoBytes.size()) != 0) {
+            LOG_WARN("{}: the logo video's choice in Init2 at 0x{:x} differs from the analysed build ({}): changing "
+                     "nothing.", t.what, b->logo, Hex(base + b->logo, b->logoBytes.size()));
             return Result::UnknownBuild;
         }
 
         // Not built yet? Then its memory (.bss) is still all zero.
         for (std::size_t i = 0; i < kCVarSize; ++i) {
             if (base[b->cvar + i] != 0) {
-                LOG_WARN("Intro video: com_skipIntroVideo already exists (the plugin was loaded after the game's "
-                         "start-up code), so changing its default would do nothing: changing nothing.");
+                LOG_WARN("{}: {} already exists (the plugin was loaded after the game's start-up code), so changing its "
+                         "default would do nothing: changing nothing.", t.what, t.cvar);
                 return Result::Failed;
             }
         }
 
-        std::uint8_t* target = base + b->init + b->dispOffset;
-        DWORD oldProtect = 0;
-        if (!VirtualProtect(target, sizeof(disp), PAGE_EXECUTE_READWRITE, &oldProtect)) {
-            LOG_ERROR("Intro video: VirtualProtect failed (error {}): changing nothing.", GetLastError());
-            return Result::Failed;
+        if (!WriteCode(t.what, base + b->init + b->dispOffset, &patchedDisp, sizeof(patchedDisp))) return Result::Failed;
+        LOG_INFO("Patched 0x{:x}: {} starts as 1 instead of 0, as with +{} 1 ({}).", b->init + b->dispOffset, t.cvar,
+                 t.cvar, t.effect);
+        if (b->logo) {
+            if (!WriteCode(t.what, base + b->logo + b->logoOffset, kNoLogo, sizeof(kNoLogo))) {
+                // All or nothing: the default goes back to "0".
+                WriteCode(t.what, base + b->init + b->dispOffset, &originalDisp, sizeof(originalDisp));
+                return Result::Failed;
+            }
+            LOG_INFO("Patched 0x{:x}: with {} set, Init2 plays no logo video at all (it played one while \"common\" "
+                     "loaded whenever bink_dontfree is set).", b->logo + b->logoOffset, t.cvar);
         }
-        std::memcpy(target, &patchedDisp, sizeof(patchedDisp));
-        DWORD unused = 0;
-        if (!VirtualProtect(target, sizeof(disp), oldProtect, &unused))
-            LOG_WARN("Intro video: could not restore the protection at 0x{:x} (error {}); the change itself is made.",
-                     b->init + b->dispOffset, GetLastError());
-        FlushInstructionCache(GetCurrentProcess(), target, sizeof(disp));
-
-        if (std::memcmp(target, &patchedDisp, sizeof(patchedDisp)) != 0) {
-            LOG_ERROR("Intro video: write did not stick at 0x{:x}.", b->init + b->dispOffset);
-            return Result::Failed;
-        }
-        LOG_INFO("Patched 0x{:x}: com_skipIntroVideo starts as 1 instead of 0, as with +com_skipIntroVideo 1 "
-                 "(no logo video at start-up).", b->init + b->dispOffset);
         return Result::Patched;
+    }
+
+    Result Apply(HMODULE exe)
+    {
+        return ApplyTo(exe, {kBuilds, "com_skipIntroVideo", "Intro video", "the logo video no longer holds the start-up"});
+    }
+
+    Result ApplyWarningScreens(HMODULE exe)
+    {
+        return ApplyTo(exe, {kWarningBuilds, "skipInitialWarningScreens", "Warning screens",
+                             "the warning screens before the main menu are skipped"});
     }
 }

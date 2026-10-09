@@ -37,6 +37,13 @@
 // flags at +0xc, the video at +0x9b0 and its state at +0x60. Only the three flag accessors aren't
 // next to each other there. The Game Pass build has the same code at other addresses (the hook at
 // 0x176adc).
+//
+// The Old Blood has the same wait (0x169380), its exit checks from 0x1694b5 (the abort byte at
+// +0x4328) and the hook at 0x1694da (r14d), and the same render system and flags, with the loading
+// video at +0xa18; its flag accessors and IsVideoDone are laid out like Epic's. It adds the cvar
+// com_autoSkipVideoOnLoadDone ("automatically skip video when done", default 0), but that only
+// makes any input count as a press: the prompt still waits for one. Its Game Pass build has the
+// same code at other addresses (the checks from 0x178b77, the hook at 0x178b9c).
 // ---------------------------------------------------------------------------
 
 #include <span>
@@ -110,7 +117,7 @@ namespace LoadPrompt
     constexpr std::uintptr_t kRenderSystemVtbl = 0xEE5B68;   // idRenderSystemLocal's vtable
     constexpr std::size_t kSlotSetFlag = 19, kSlotClearFlag = 20, kSlotHasFlag = 21, kSlotIsVideoDone = 22;
     constexpr std::size_t kFlagsOffset = 0xC;
-    constexpr std::size_t kVideoOffset = 0x9B0, kVideoStateOffset = 0x60;
+    constexpr std::size_t kVideoOffset = 0x9B0, kVideoStateOffset = 0x60;  // The New Order's three builds
 
     // The 2021 build (Epic).
     constexpr std::uint32_t kTimeDateStamp2021 = 0x611A423D;
@@ -212,6 +219,103 @@ namespace LoadPrompt
     constexpr std::uintptr_t kRenderSystemObj2021GP = 0x1C73F40;
     constexpr std::uintptr_t kRenderSystemVtbl2021GP = 0xCFB018;
 
+    // The Old Blood (GOG).
+    constexpr std::uint32_t kTimeDateStampTOB = 0x554C7C23;
+    constexpr std::uintptr_t kLoopChecksTOB = 0x1694B5;
+    constexpr std::uint8_t kLoopChecksTOBBytes[] = {
+        0x40, 0x84, 0xFF,                          // test dil, dil
+        0x0F, 0x84, 0xB2, 0x01, 0x00, 0x00,        // je   0x169670 (leave)
+        0x0F, 0xB6, 0x86, 0x28, 0x43, 0x00, 0x00,  // movzx eax, byte [rsi+0x4328] (abort)
+        0x84, 0xC0,                                // test al, al
+        0x0F, 0x85, 0xA3, 0x01, 0x00, 0x00,        // jne  0x169670
+        0xE8, 0xEE, 0x68, 0x5F, 0x00,              // call 0x75fdc0 (quitting?)
+        0x84, 0xC0,                                // test al, al
+        0x0F, 0x85, 0x96, 0x01, 0x00, 0x00,        // jne  0x169670
+        0x44, 0x39, 0x35, 0xA7, 0xE7, 0xD6, 0x01,  // cmp  [skipLoadingVideoAutomatically], r14d  <- hook
+        0x0F, 0x85, 0x89, 0x01, 0x00, 0x00,        // jne  0x169670
+        0x48, 0x8B, 0x0D, 0x42, 0xFD, 0x61, 0x01,  // mov  rcx, [renderSystem]
+        0xBA, 0x08, 0x00, 0x00, 0x00,              // mov  edx, 8
+        0x48, 0x8B, 0x01,                          // mov  rax, [rcx]
+        0xFF, 0x90, 0xA8, 0x00, 0x00, 0x00,        // call [rax+0xa8] (HasFlag)
+        0x84, 0xC0,                                // test al, al
+        0x0F, 0x84, 0x2A, 0x01, 0x00, 0x00,        // je   0x16962e
+    };
+    constexpr std::uintptr_t kHookAtTOB = 0x1694DA;
+    static_assert(kHookAtTOB == kLoopChecksTOB + 0x25);
+    constexpr std::uintptr_t kLoopTailTOB = 0x16964E;
+    constexpr std::uint8_t kLoopTailTOBBytes[] = {
+        0xB9, 0x0A, 0x00, 0x00, 0x00,              // mov  ecx, 10
+        0xE8, 0x48, 0xB1, 0x84, 0x00,              // call Sys_Sleep
+        0x48, 0x8B, 0x0D, 0xD1, 0xFB, 0x61, 0x01,  // mov  rcx, [renderSystem]
+        0x48, 0x8B, 0x01,                          // mov  rax, [rcx]
+        0xFF, 0x90, 0xB0, 0x00, 0x00, 0x00,        // call [rax+0xb0] (IsVideoDone)
+        0x84, 0xC0,                                // test al, al
+        0x0F, 0x84, 0x45, 0xFE, 0xFF, 0xFF,        // je   0x1694b5 (loop)
+    };
+    constexpr std::uintptr_t kSetFlagTOB = 0x481630;
+    constexpr std::uintptr_t kClearFlagTOB = 0x481380;
+    constexpr std::uintptr_t kHasFlagTOB = 0x47EC70;
+    constexpr std::uintptr_t kIsVideoDoneTOB = 0x482930;
+    constexpr std::uint8_t kIsVideoDoneTOBBytes[] = {
+        0x48, 0x83, 0xEC, 0x28,                    // sub  rsp, 0x28
+        0x48, 0x8B, 0x81, 0x18, 0x0A, 0x00, 0x00,  // mov  rax, [rcx+0xa18]    (the video)
+        0x8B, 0x50, 0x60,                          // mov  edx, [rax+0x60]     (its state)
+        0x83, 0xEA, 0x03,                          // sub  edx, 3
+        0x83, 0xFA, 0x01,                          // cmp  edx, 1
+        0x76, 0x19,                                // jbe  false               (state 3 or 4)
+        0x48, 0x8B, 0x01,                          // mov  rax, [rcx]
+        0xBA, 0x01, 0x00, 0x00, 0x00,              // mov  edx, 1
+        0xFF, 0x90, 0xA8, 0x00, 0x00, 0x00,        // call [rax+0xa8] (HasFlag(1))
+        0x84, 0xC0, 0x75, 0x07,                    // test al, al; jne false
+        0xB0, 0x01, 0x48, 0x83, 0xC4, 0x28, 0xC3,  // true
+        0x32, 0xC0, 0x48, 0x83, 0xC4, 0x28, 0xC3,  // false
+    };
+    constexpr std::uintptr_t kRenderSystemPtrTOB = 0x1789230;
+    constexpr std::uintptr_t kRenderSystemObjTOB = 0x1F20440;
+    constexpr std::uintptr_t kRenderSystemVtblTOB = 0xEC8448;
+    constexpr std::size_t kVideoOffsetTOB = 0xA18;
+
+    // The Old Blood, Game Pass: the GOG build's code at other addresses; IsVideoDone has its bytes.
+    constexpr std::uint32_t kTimeDateStampTOBGP = 0x60770B00;
+    constexpr std::uintptr_t kLoopChecksTOBGP = 0x178B77;
+    constexpr std::uint8_t kLoopChecksTOBGPBytes[] = {
+        0x40, 0x84, 0xFF,                          // test dil, dil
+        0x0F, 0x84, 0xB0, 0x01, 0x00, 0x00,        // je   0x178d30 (leave)
+        0x0F, 0xB6, 0x86, 0x28, 0x43, 0x00, 0x00,  // movzx eax, byte [rsi+0x4328] (abort)
+        0x84, 0xC0,                                // test al, al
+        0x0F, 0x85, 0xA1, 0x01, 0x00, 0x00,        // jne  0x178d30
+        0xE8, 0x6C, 0x84, 0x94, 0x00,              // call 0xac1000 (quitting?)
+        0x84, 0xC0,                                // test al, al
+        0x0F, 0x85, 0x94, 0x01, 0x00, 0x00,        // jne  0x178d30
+        0x44, 0x39, 0x35, 0xB5, 0xB3, 0xAB, 0x01,  // cmp  [skipLoadingVideoAutomatically], r14d  <- hook
+        0x0F, 0x85, 0x87, 0x01, 0x00, 0x00,        // jne  0x178d30
+        0x48, 0x8B, 0x0D, 0xF0, 0x5F, 0x06, 0x01,  // mov  rcx, [renderSystem]
+        0xBA, 0x08, 0x00, 0x00, 0x00,              // mov  edx, 8
+        0x48, 0x8B, 0x01,                          // mov  rax, [rcx]
+        0xFF, 0x90, 0xA8, 0x00, 0x00, 0x00,        // call [rax+0xa8] (HasFlag)
+        0x84, 0xC0,                                // test al, al
+        0x0F, 0x84, 0x28, 0x01, 0x00, 0x00,        // je   0x178cee
+    };
+    constexpr std::uintptr_t kHookAtTOBGP = 0x178B9C;
+    static_assert(kHookAtTOBGP == kLoopChecksTOBGP + 0x25);
+    constexpr std::uintptr_t kLoopTailTOBGP = 0x178D0E;
+    constexpr std::uint8_t kLoopTailTOBGPBytes[] = {
+        0xB9, 0x0A, 0x00, 0x00, 0x00,              // mov  ecx, 10
+        0xE8, 0xD8, 0xCE, 0x8E, 0x00,              // call Sys_Sleep
+        0x48, 0x8B, 0x0D, 0x81, 0x5E, 0x06, 0x01,  // mov  rcx, [renderSystem]
+        0x48, 0x8B, 0x01,                          // mov  rax, [rcx]
+        0xFF, 0x90, 0xB0, 0x00, 0x00, 0x00,        // call [rax+0xb0] (IsVideoDone)
+        0x84, 0xC0,                                // test al, al
+        0x0F, 0x84, 0x47, 0xFE, 0xFF, 0xFF,        // je   0x178b77 (loop)
+    };
+    constexpr std::uintptr_t kSetFlagTOBGP = 0x4A1F30;
+    constexpr std::uintptr_t kClearFlagTOBGP = 0x4A1BE0;
+    constexpr std::uintptr_t kHasFlagTOBGP = 0x49FE40;
+    constexpr std::uintptr_t kIsVideoDoneTOBGP = 0x4A3150;
+    constexpr std::uintptr_t kRenderSystemPtrTOBGP = 0x11DEBA0;
+    constexpr std::uintptr_t kRenderSystemObjTOBGP = 0x1C98460;
+    constexpr std::uintptr_t kRenderSystemVtblTOBGP = 0xD1C178;
+
     // What Install checks before it hooks: code that must match byte for byte, and the render
     // system's addresses, whose pointer and vtable slots are static data.
     struct Gate
@@ -227,6 +331,7 @@ namespace LoadPrompt
         std::uintptr_t hookAt;
         std::uintptr_t renderSystemPtr, renderSystemObj, renderSystemVtbl;
         std::uintptr_t setFlag, clearFlag, hasFlag, isVideoDone;
+        std::size_t videoOffset;  // the loading video in the render system, as IsVideoDone reads it
     };
     constexpr Gate kGates[] = {
         {kLoopChecks, kLoopChecksBytes, "the wait loop"},
@@ -250,13 +355,33 @@ namespace LoadPrompt
         {kHasFlag2021GP, kHasFlag2021Bytes, "HasFlag"},
         {kIsVideoDone2021GP, kIsVideoDone2021Bytes, "IsVideoDone"},
     };
+    constexpr Gate kGatesTOB[] = {
+        {kLoopChecksTOB, kLoopChecksTOBBytes, "the wait loop"},
+        {kLoopTailTOB, kLoopTailTOBBytes, "the wait loop's tail"},
+        {kSetFlagTOB, kSetFlag2021Bytes, "SetFlag"},
+        {kClearFlagTOB, kClearFlag2021Bytes, "ClearFlag"},
+        {kHasFlagTOB, kHasFlag2021Bytes, "HasFlag"},
+        {kIsVideoDoneTOB, kIsVideoDoneTOBBytes, "IsVideoDone"},
+    };
+    constexpr Gate kGatesTOBGP[] = {
+        {kLoopChecksTOBGP, kLoopChecksTOBGPBytes, "the wait loop"},
+        {kLoopTailTOBGP, kLoopTailTOBGPBytes, "the wait loop's tail"},
+        {kSetFlagTOBGP, kSetFlag2021Bytes, "SetFlag"},
+        {kClearFlagTOBGP, kClearFlag2021Bytes, "ClearFlag"},
+        {kHasFlagTOBGP, kHasFlag2021Bytes, "HasFlag"},
+        {kIsVideoDoneTOBGP, kIsVideoDoneTOBBytes, "IsVideoDone"},
+    };
     constexpr Build kBuilds[] = {
         {kTimeDateStamp, kGates, kHookAt, kRenderSystemPtr, kRenderSystemObj, kRenderSystemVtbl, kFlagFns,
-         kFlagFns + 0x10, kFlagFns + 0x20, kIsVideoDone},
+         kFlagFns + 0x10, kFlagFns + 0x20, kIsVideoDone, kVideoOffset},
         {kTimeDateStamp2021, kGates2021, kHookAt2021, kRenderSystemPtr2021, kRenderSystemObj2021, kRenderSystemVtbl2021,
-         kSetFlag2021, kClearFlag2021, kHasFlag2021, kIsVideoDone2021},
+         kSetFlag2021, kClearFlag2021, kHasFlag2021, kIsVideoDone2021, kVideoOffset},
         {kTimeDateStamp2021GP, kGates2021GP, kHookAt2021GP, kRenderSystemPtr2021GP, kRenderSystemObj2021GP,
-         kRenderSystemVtbl2021GP, kSetFlag2021GP, kClearFlag2021GP, kHasFlag2021GP, kIsVideoDone2021GP},
+         kRenderSystemVtbl2021GP, kSetFlag2021GP, kClearFlag2021GP, kHasFlag2021GP, kIsVideoDone2021GP, kVideoOffset},
+        {kTimeDateStampTOB, kGatesTOB, kHookAtTOB, kRenderSystemPtrTOB, kRenderSystemObjTOB, kRenderSystemVtblTOB,
+         kSetFlagTOB, kClearFlagTOB, kHasFlagTOB, kIsVideoDoneTOB, kVideoOffsetTOB},
+        {kTimeDateStampTOBGP, kGatesTOBGP, kHookAtTOBGP, kRenderSystemPtrTOBGP, kRenderSystemObjTOBGP,
+         kRenderSystemVtblTOBGP, kSetFlagTOBGP, kClearFlagTOBGP, kHasFlagTOBGP, kIsVideoDoneTOBGP, kVideoOffsetTOB},
     };
 
     // The load screen's flags (the render system's flag word at +0xc), as this plugin reads them.
@@ -302,6 +427,7 @@ namespace LoadPrompt
 
     static std::uint8_t* gBase = nullptr;
     static std::uintptr_t gRenderSystemPtr = 0, gRenderSystemVtbl = 0;  // the build's; set in Install
+    static std::size_t gVideoOffset = kVideoOffset;
     static ULONGLONG gLastCall = 0;
     static Decision gLastDecision = Decision::AlreadyLeaving;
     static unsigned gContinued = 0;
@@ -321,7 +447,7 @@ namespace LoadPrompt
             return;
         }
         const std::uint32_t flags = *reinterpret_cast<volatile std::uint32_t*>(rs + kFlagsOffset);
-        const auto* video = *reinterpret_cast<std::uint8_t* const*>(rs + kVideoOffset);
+        const auto* video = *reinterpret_cast<std::uint8_t* const*>(rs + gVideoOffset);
         const int state = video ? *reinterpret_cast<const volatile int*>(video + kVideoStateOffset) : 0;
         const Decision d = Decide(flags, state);
 
@@ -397,6 +523,7 @@ namespace LoadPrompt
         gBase = base;
         gRenderSystemPtr = b->renderSystemPtr;
         gRenderSystemVtbl = b->renderSystemVtbl;
+        gVideoOffset = b->videoOffset;
         auto hook = safetyhook::MidHook::create(base + b->hookAt, OnLoopCheck);
         if (!hook) {
             gBase = nullptr;

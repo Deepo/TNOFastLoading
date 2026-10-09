@@ -30,6 +30,8 @@
 //
 // The 2021 build (Epic, see read_wait_fix.cpp) has the same loop at 0x1712b7, with a 5-byte nop
 // instead of an 8-byte one, so the immediate is at 0x1712d1. Game Pass has the loop at 0x171877.
+// The Old Blood's map load (0x163590) has it at 0x1638f5, with a 7-byte nop: the immediate is at
+// 0x163911. Its Game Pass build has it at 0x172f69 with a 3-byte nop (the immediate at 0x172f81).
 // ---------------------------------------------------------------------------
 
 #include <array>
@@ -104,6 +106,50 @@ namespace PreloadWaitFix
     };
     static_assert(kLoop2021GP + kImmOffset2021 == 0x171891);
 
+    // The Old Blood (GOG).
+    constexpr std::uint32_t kTimeDateStampTOB = 0x554C7C23;
+    constexpr std::uintptr_t kLoopTOB = 0x1638F5;
+    constexpr std::uint8_t kLoopTOBBytes[] = {
+        0x8B, 0xD8,                                // mov  ebx, eax
+        0x8B, 0xD0,                                // mov  edx, eax
+        0x48, 0x8D, 0x0D, 0xA8, 0x54, 0xDC, 0x01,  // lea  rcx, [rip+0x1dc54a8]
+        0xE8, 0xBB, 0xD8, 0x33, 0x00,              // call 0x4a11c0
+        0x84, 0xC0,                                // test al, al
+        0x75, 0x23,                                // jne  0x16392c
+        0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00,  // nop
+        0xB9, 0x64, 0x00, 0x00, 0x00,              // mov  ecx, 0x64
+        0xE8, 0x86, 0x0E, 0x85, 0x00,              // call Sys_Sleep (0x9b47a0)
+        0x8B, 0xD3,                                // mov  edx, ebx
+        0x48, 0x8D, 0x0D, 0x85, 0x54, 0xDC, 0x01,  // lea  rcx, [rip+0x1dc5485]
+        0xE8, 0x98, 0xD8, 0x33, 0x00,              // call 0x4a11c0
+        0x84, 0xC0,                                // test al, al
+        0x74, 0xE4,                                // je   0x163910
+    };
+    constexpr std::size_t kImmOffsetTOB = 0x1C;  // at 0x163911
+    static_assert(kLoopTOB + kImmOffsetTOB == 0x163911);
+
+    // The Old Blood, Game Pass.
+    constexpr std::uint32_t kTimeDateStampTOBGP = 0x60770B00;
+    constexpr std::uintptr_t kLoopTOBGP = 0x172F69;
+    constexpr std::uint8_t kLoopTOBGPBytes[] = {
+        0x8B, 0xD8,                                // mov  ebx, eax
+        0x8B, 0xD0,                                // mov  edx, eax
+        0x48, 0x8D, 0x0D, 0x54, 0xD1, 0xB2, 0x01,  // lea  rcx, [rip+0x1b2d154]
+        0xE8, 0x57, 0xE7, 0x34, 0x00,              // call 0x4c16d0
+        0x84, 0xC0,                                // test al, al
+        0x75, 0x1F,                                // jne  0x172f9c
+        0x0F, 0x1F, 0x00,                          // nop
+        0xB9, 0x64, 0x00, 0x00, 0x00,              // mov  ecx, 0x64
+        0xE8, 0x66, 0x2C, 0x8F, 0x00,              // call Sys_Sleep (0xa65bf0)
+        0x8B, 0xD3,                                // mov  edx, ebx
+        0x48, 0x8D, 0x0D, 0x35, 0xD1, 0xB2, 0x01,  // lea  rcx, [rip+0x1b2d135]
+        0xE8, 0x38, 0xE7, 0x34, 0x00,              // call 0x4c16d0
+        0x84, 0xC0,                                // test al, al
+        0x74, 0xE4,                                // je   0x172f80
+    };
+    constexpr std::size_t kImmOffsetTOBGP = 0x18;  // at 0x172f81
+    static_assert(kLoopTOBGP + kImmOffsetTOBGP == 0x172F81);
+
     struct Build
     {
         std::uint32_t stamp;
@@ -115,10 +161,13 @@ namespace PreloadWaitFix
         {kTimeDateStamp, kLoop, kLoopBytes, kImmOffset},
         {kTimeDateStamp2021, kLoop2021, kLoop2021Bytes, kImmOffset2021},
         {kTimeDateStamp2021GP, kLoop2021GP, kLoop2021GPBytes, kImmOffset2021},
+        {kTimeDateStampTOB, kLoopTOB, kLoopTOBBytes, kImmOffsetTOB},
+        {kTimeDateStampTOBGP, kLoopTOBGP, kLoopTOBGPBytes, kImmOffsetTOBGP},
     };
     constexpr std::size_t kMaxLoop = 64;
     static_assert(sizeof(kLoopBytes) <= kMaxLoop && sizeof(kLoop2021Bytes) <= kMaxLoop &&
-                  sizeof(kLoop2021GPBytes) <= kMaxLoop);
+                  sizeof(kLoop2021GPBytes) <= kMaxLoop && sizeof(kLoopTOBBytes) <= kMaxLoop &&
+                  sizeof(kLoopTOBGPBytes) <= kMaxLoop);
 
     static std::string Hex(const std::uint8_t* p, std::size_t n)
     {

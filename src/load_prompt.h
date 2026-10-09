@@ -16,8 +16,8 @@ namespace LoadPrompt
     Decision Decide(std::uint32_t flags, int videoState);
     const char* ToString(Decision d);
 
-    // exe: WolfNewOrder_x64.exe in memory. Checks that it is the analysed build, then hooks the
-    // load screen's wait-for-continue loop. Anything unexpected: no hook, and the log says why.
-    // The hook stays for the life of the process.
+    // exe: the game's exe in memory (WolfNewOrder_x64.exe or WolfOldBlood_x64.exe). Checks that it
+    // is one of the analysed builds, then hooks the load screen's wait-for-continue loop. Anything
+    // unexpected: no hook, and the log says why. The hook stays for the life of the process.
     Result Install(HMODULE exe);
 }

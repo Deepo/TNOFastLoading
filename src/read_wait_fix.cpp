@@ -46,7 +46,8 @@
 //    the game's reading threads, so it doesn't log or allocate; its counts go out through
 //    TakeStats.
 //
-// Three builds of the exe are known, told apart by the PE timestamp:
+// Four builds are known, told apart by the PE timestamp: three of The New Order's exe and one of
+// The Old Blood's.
 //  - 2014, "Wolfenstein The New Order.1683.12274 win-x64 Retail Jun 18 2014": GOG's exe, and
 //    Steam's, which is the same exe inside Steam's DRM wrapper (Ultimate ASI Loader starts the
 //    plugin once the code is decrypted). The addresses above are this build's.
@@ -55,6 +56,11 @@
 //    only through eax instead of r11d and with a 2-byte nop.
 //  - 2021GP (2021-04-13): the Game Pass exe, the same code as Epic's at other addresses (the loop
 //    at 0x17d825).
+//  - TOB (2015-05-08): WolfOldBlood_x64.exe, The Old Blood's GOG exe (Steam's is the same exe
+//    inside Steam's DRM wrapper). The same function is at 0x170480 with the same frame; its loop
+//    (0x170593) is Epic's with a 4-byte nop, so the call's rel32 is two bytes further on.
+//  - TOBGP (2021-04-14): The Old Blood's Game Pass exe, rebuilt like The New Order's: Epic's loop
+//    exactly, at 0x17f975.
 // ---------------------------------------------------------------------------
 
 namespace ReadWaitFix
@@ -146,6 +152,55 @@ namespace ReadWaitFix
     constexpr std::uintptr_t kIatSwitchToThread2021GP = 0xC593C0;
     static_assert(kSysSleep2021GP - (kLoop2021GP + kRelOffset + 4) == 0x008E070E);
 
+    // The Old Blood (GOG, 2015-05-08).
+    constexpr std::uint32_t kTimeDateStampTOB = 0x554C7C23;
+    constexpr std::uintptr_t kLoopTOB = 0x170593;
+    constexpr std::uint8_t kLoopTOBBytes[] = {
+        0x0F, 0xB6, 0x44, 0x24, 0x60,  // movzx eax, byte [rsp+0x60]
+        0x84, 0xC0,                    // test  al, al
+        0x75, 0x1F,                    // jne   0x1705bb
+        0x0F, 0x1F, 0x40, 0x00,        // nop
+        0x0F, 0xB6, 0x46, 0x10,        // movzx eax, byte [rsi+0x10]
+        0x84, 0xC0,                    // test  al, al
+        0x75, 0x13,                    // jne   0x1705bb
+        0xB9, 0x01, 0x00, 0x00, 0x00,  // mov   ecx, 1
+        0xE8, 0xEE, 0x41, 0x84, 0x00,  // call  Sys_Sleep
+        0x0F, 0xB6, 0x44, 0x24, 0x60,  // movzx eax, byte [rsp+0x60]
+        0x84, 0xC0,                    // test  al, al
+        0x74, 0xE5,                    // je    0x1705a0
+    };
+    constexpr std::size_t kRelOffsetTOB = 0x1B;  // rel32 of the call at 0x1705ad
+    constexpr std::uintptr_t kSysSleepTOB = 0x9B47A0;
+    constexpr std::uint8_t kSysSleepTOBBytes[] = {0x48, 0xFF, 0x25, 0x61, 0xBB, 0x20, 0x00};  // -> IAT 0xbc0308 Sleep
+    constexpr std::uintptr_t kSysYieldTOB = 0x9BBF70;
+    constexpr std::uint8_t kSysYieldTOBBytes[] = {0x48, 0xFF, 0x25, 0xF1, 0x43, 0x20, 0x00};  // -> IAT 0xbc0368 SwitchToThread
+    constexpr std::uintptr_t kIatSwitchToThreadTOB = 0xBC0368;
+    static_assert(kSysSleepTOB - (kLoopTOB + kRelOffsetTOB + 4) == 0x008441EE);
+
+    // The Old Blood, Game Pass (2021-04-14): the 2021 loop.
+    constexpr std::uint32_t kTimeDateStampTOBGP = 0x60770B00;
+    constexpr std::uintptr_t kLoopTOBGP = 0x17F975;
+    constexpr std::uint8_t kLoopTOBGPBytes[] = {
+        0x0F, 0xB6, 0x44, 0x24, 0x60,  // movzx eax, byte [rsp+0x60]
+        0x84, 0xC0,                    // test  al, al
+        0x75, 0x1D,                    // jne   0x17f99b
+        0x66, 0x90,                    // nop
+        0x0F, 0xB6, 0x46, 0x10,        // movzx eax, byte [rsi+0x10]
+        0x84, 0xC0,                    // test  al, al
+        0x75, 0x13,                    // jne   0x17f99b
+        0xB9, 0x01, 0x00, 0x00, 0x00,  // mov   ecx, 1
+        0xE8, 0x5E, 0x62, 0x8E, 0x00,  // call  Sys_Sleep
+        0x0F, 0xB6, 0x44, 0x24, 0x60,  // movzx eax, byte [rsp+0x60]
+        0x84, 0xC0,                    // test  al, al
+        0x74, 0xE5,                    // je    0x17f980
+    };
+    constexpr std::uintptr_t kSysSleepTOBGP = 0xA65BF0;
+    constexpr std::uint8_t kSysSleepTOBGPBytes[] = {0x48, 0xFF, 0x25, 0x71, 0x07, 0x21, 0x00};  // -> IAT 0xc76368 Sleep
+    constexpr std::uintptr_t kSysYieldTOBGP = 0xA6F9A0;
+    constexpr std::uint8_t kSysYieldTOBGPBytes[] = {0x48, 0xFF, 0x25, 0x19, 0x6A, 0x20, 0x00};  // -> IAT 0xc763c0 SwitchToThread
+    constexpr std::uintptr_t kIatSwitchToThreadTOBGP = 0xC763C0;
+    static_assert(kSysSleepTOBGP - (kLoopTOBGP + kRelOffset + 4) == 0x008E625E);
+
     struct Build
     {
         std::uint32_t stamp;
@@ -168,10 +223,15 @@ namespace ReadWaitFix
          kSysYield2021Bytes, kIatSwitchToThread2021, kDoneFlag, kShutdownFlag},
         {kTimeDateStamp2021GP, kLoop2021GP, kLoop2021GPBytes, kRelOffset, kSysSleep2021GP, kSysSleep2021GPBytes,
          kSysYield2021GP, kSysYield2021GPBytes, kIatSwitchToThread2021GP, kDoneFlag, kShutdownFlag},
+        {kTimeDateStampTOB, kLoopTOB, kLoopTOBBytes, kRelOffsetTOB, kSysSleepTOB, kSysSleepTOBBytes, kSysYieldTOB,
+         kSysYieldTOBBytes, kIatSwitchToThreadTOB, kDoneFlag, kShutdownFlag},
+        {kTimeDateStampTOBGP, kLoopTOBGP, kLoopTOBGPBytes, kRelOffset, kSysSleepTOBGP, kSysSleepTOBGPBytes, kSysYieldTOBGP,
+         kSysYieldTOBGPBytes, kIatSwitchToThreadTOBGP, kDoneFlag, kShutdownFlag},
     };
     constexpr std::size_t kMaxLoop = 64;
     static_assert(sizeof(kLoopBytes) <= kMaxLoop && sizeof(kLoop2021Bytes) <= kMaxLoop &&
-                  sizeof(kLoop2021GPBytes) <= kMaxLoop);
+                  sizeof(kLoop2021GPBytes) <= kMaxLoop && sizeof(kLoopTOBBytes) <= kMaxLoop &&
+                  sizeof(kLoopTOBGPBytes) <= kMaxLoop);
 
     WaitResult WaitForRead(const volatile std::uint8_t* done, const volatile std::uint8_t* shutdown,
                            std::int64_t yieldTicks, const WaitOps& ops)
@@ -294,8 +354,10 @@ namespace ReadWaitFix
         const std::uint32_t stamp = TimeDateStamp(base);
         const Build* b = FindBuild(stamp);
         if (!b) {
-            LOG_INFO("Exe in memory at {}, PE timestamp 0x{:08x} (analysed builds: 0x{:08x}, 0x{:08x}, 0x{:08x})",
-                     static_cast<void*>(base), stamp, kTimeDateStamp, kTimeDateStamp2021, kTimeDateStamp2021GP);
+            std::string known;
+            for (const Build& k : kBuilds) known += std::format("{}0x{:08x}", known.empty() ? "" : ", ", k.stamp);
+            LOG_INFO("Exe in memory at {}, PE timestamp 0x{:08x} (analysed builds: {})", static_cast<void*>(base), stamp,
+                     known);
             LOG_WARN("Not one of the analysed builds of the game (was it updated?): changing nothing.");
             return Result::UnknownBuild;
         }

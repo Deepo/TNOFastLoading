@@ -6,8 +6,9 @@
 
 #include <ini.h>
 
-// The ini framework. The plugin keeps its switches in src/loadfix/settings.h; its Config::Init
-// calls Read and then ParseConfig for each of its keys.
+// The ini framework both plugins share. Each plugin keeps its own switches in settings.h in its
+// folder (src/loadfix, src/tobfix) and has its own Config::Init, which calls Read and then
+// ParseConfig for each of its keys.
 namespace Config
 {
     inline mINI::INIStructure ini;

@@ -1,4 +1,4 @@
-TNOFastLoading's version information and log layout follow Lyall's game fixes, published under
+TNOFastLoading's and TOBFastLoading's version information and log layout follow Lyall's game fixes, published under
 the licence below. The libraries in external/ carry their own licence files.
 
 ==============================================================================

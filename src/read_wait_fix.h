@@ -11,10 +11,11 @@ namespace ReadWaitFix
     using Result = Patch::Result;  // the type every module's Apply returns
     using Patch::ToString;
 
-    // exe: WolfNewOrder_x64.exe in memory. Checks that it is the analysed build, then retargets
-    // one call (read_wait_fix.cpp): to the exe's SwitchToThread thunk, or with smartWait to the
-    // plugin's own wait through a jump near the exe (it waits for the whole read: yields for up
-    // to 2 ms, then Sleep(1)). Anything unexpected: writes nothing and says why in the log.
+    // exe: the game's exe in memory (WolfNewOrder_x64.exe or WolfOldBlood_x64.exe). Checks that it
+    // is one of the analysed builds, then retargets one call (read_wait_fix.cpp): to the exe's
+    // SwitchToThread thunk, or with smartWait to the plugin's own wait through a jump near the exe
+    // (it waits for the whole read: yields for up to 2 ms, then Sleep(1)). Anything unexpected:
+    // writes nothing and says why in the log.
     // yieldUs: SmartWait's yielding time per read (2000; 0 = sleep at once, for testing).
     Result Apply(HMODULE exe, bool smartWait, int yieldUs = 2000);
 

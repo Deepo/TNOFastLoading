@@ -1,6 +1,6 @@
 local name = "TNOFastLoading"
 
-set_project(name)
+set_project("WolfensteinFastLoading")
 add_rules("mode.debug", "mode.release")
 set_languages("cxxlatest", "clatest")
 
@@ -38,6 +38,42 @@ target(name)
     add_headerfiles("src/loadfix/*.h", "src/*.h")
     add_files("src/loadfix/*.cpp", "src/loadfix/version.rc",
               "src/read_wait_fix.cpp", "src/preload_wait_fix.cpp", "src/load_prompt.cpp", "src/intro_skip.cpp",
+              "src/patch_result.cpp", "src/config.cpp", "src/logger.cpp", "external/safetyhook/src/**.cpp")
+    add_deps("zydis")
+
+    if is_plat("windows") then
+        set_toolchains("msvc")
+        add_cxflags("/utf-8", "/W4")
+        if is_mode("release") then
+            set_optimize("fastest")
+            set_strip("all")
+            set_runtimes("MT")
+            add_ldflags("/OPT:REF", "/OPT:ICF")
+        else
+            set_strip("none")
+            set_runtimes("MTd")
+            add_cxflags("/Zi")
+            add_defines("_DEBUG")
+        end
+    end
+
+-- ===================== TOBFastLoading.asi =====================
+-- "Wolfenstein The Old Blood - Fast Loading" by Deepo on Nexus Mods.
+-- src/tobfix (DllMain for WolfOldBlood_x64.exe, its switches, its version info) and the same four
+-- loading modules, whose tables have rows for The Old Blood's GOG/Steam and Game Pass exes, plus
+-- quit_fix (FastQuit, The Old Blood only); each switchable in TOBFastLoading.ini. Loaded by
+-- Ultimate ASI Loader as winmm.dll.
+
+target("TOBFastLoading")
+    set_kind("shared")
+    set_prefixname("")
+    set_extension(".asi")
+
+    add_includedirs("src/tobfix", "src", "external/safetyhook/include", "external/mINI/src/mini")
+    add_headerfiles("src/tobfix/*.h", "src/*.h")
+    add_files("src/tobfix/*.cpp", "src/tobfix/version.rc",
+              "src/read_wait_fix.cpp", "src/preload_wait_fix.cpp", "src/load_prompt.cpp", "src/intro_skip.cpp",
+              "src/quit_fix.cpp",
               "src/patch_result.cpp", "src/config.cpp", "src/logger.cpp", "external/safetyhook/src/**.cpp")
     add_deps("zydis")
 
