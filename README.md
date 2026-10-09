@@ -5,7 +5,8 @@ installation and support are on Nexus Mods:
 
 - **Wolfenstein The New Order - Fast Loading** (`TNOFastLoading.asi`):
   https://www.nexusmods.com/wolfensteintheneworder/mods/22
-- **Wolfenstein The Old Blood - Fast Loading** (`TOBFastLoading.asi`): the Nexus page is not up yet.
+- **Wolfenstein The Old Blood - Fast Loading** (`TOBFastLoading.asi`):
+  https://www.nexusmods.com/wolfensteintheoldblood/mods/11
 
 The two share their loading modules (`src/*.cpp`); each has its own DllMain, switches and version
 information, in `src/loadfix` (The New Order) and `src/tobfix` (The Old Blood). `src/quit_fix.cpp`
